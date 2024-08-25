@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Todo List</title>
+    <title>Improved Todo List</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -21,7 +21,7 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-            width: 300px;
+            width: 400px;
             text-align: center;
         }
 
@@ -32,6 +32,7 @@
         .input-group {
             display: flex;
             justify-content: space-between;
+            margin-bottom: 20px;
         }
 
         #taskInput {
@@ -57,10 +58,28 @@
             background-color: #218838;
         }
 
+        .filter-group {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+
+        .filter-group button {
+            padding: 10px;
+            border: none;
+            background-color: #ddd;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .filter-group button.active {
+            background-color: #007bff;
+            color: white;
+        }
+
         .task-list {
             list-style: none;
             padding: 0;
-            margin-top: 20px;
         }
 
         .task-item {
@@ -70,17 +89,28 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            transition: all 0.3s ease;
         }
 
         .task-item:last-child {
             border-bottom: none;
         }
 
-        .complete-button, .delete-button {
+        .task-item.completed span {
+            text-decoration: line-through;
+            color: #888;
+        }
+
+        .edit-button, .complete-button, .delete-button {
             background-color: transparent;
             border: none;
             cursor: pointer;
             color: #007bff;
+            margin-left: 5px;
+        }
+
+        .edit-button:hover {
+            color: #ffc107;
         }
 
         .complete-button:hover {
@@ -89,6 +119,44 @@
 
         .delete-button:hover {
             color: #dc3545;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .modal-content button {
+            padding: 10px 20px;
+            margin: 10px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .confirm-button {
+            background-color: #28a745;
+            color: white;
+            border-radius: 4px;
+        }
+
+        .cancel-button {
+            background-color: #dc3545;
+            color: white;
+            border-radius: 4px;
         }
     </style>
 </head>
@@ -99,12 +167,23 @@
             <input type="text" id="taskInput" placeholder="Enter a new task...">
             <button id="addTaskButton">Add Task</button>
         </div>
-        <ul id="taskList" class="task-list">
-            <!-- Список задач будет добавляться сюда -->
-        </ul>
+        <div class="filter-group">
+            <button data-filter="all" class="active">All</button>
+            <button data-filter="active">Active</button>
+            <button data-filter="completed">Completed</button>
+        </div>
+        <ul id="taskList" class="task-list"></ul>
     </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <p>Are you sure you want to delete this task?</p>
+            <button id="confirmDelete" class="confirm-button">Yes</button>
+            <button id="cancelDelete" class="cancel-button">No</button>
+        </div>
+    </div>
+
     <script>
-        // Модель задачи
         class Task {
             constructor(title, completed = false) {
                 this.title = title;
@@ -112,7 +191,6 @@
             }
         }
 
-        // Модель данных
         class Model {
             constructor() {
                 this.tasks = JSON.parse(localStorage.getItem('tasks')) || [];
@@ -128,8 +206,15 @@
                 this.updateLocalStorage();
             }
 
-            updateTask(index, updatedTask) {
-                this.tasks[index] = updatedTask;
+            toggleTaskCompletion(index) {
+                const task = this.tasks[index];
+                task.completed = !task.completed;
+                this.updateLocalStorage();
+            }
+
+            editTask(index, newTitle) {
+                const task = this.tasks[index];
+                task.title = newTitle;
                 this.updateLocalStorage();
             }
 
@@ -137,17 +222,27 @@
                 localStorage.setItem('tasks', JSON.stringify(this.tasks));
             }
 
-            getTasks() {
-                return this.tasks;
+            getTasks(filter = 'all') {
+                switch (filter) {
+                    case 'active':
+                        return this.tasks.filter(task => !task.completed);
+                    case 'completed':
+                        return this.tasks.filter(task => task.completed);
+                    default:
+                        return this.tasks;
+                }
             }
         }
 
-        // Представление (интерфейс)
         class View {
             constructor() {
                 this.taskList = document.getElementById('taskList');
                 this.taskInput = document.getElementById('taskInput');
                 this.addTaskButton = document.getElementById('addTaskButton');
+                this.filterButtons = document.querySelectorAll('.filter-group button');
+                this.modal = document.getElementById('modal');
+                this.confirmDeleteButton = document.getElementById('confirmDelete');
+                this.cancelDeleteButton = document.getElementById('cancelDelete');
             }
 
             displayTasks(tasks) {
@@ -155,13 +250,14 @@
 
                 tasks.forEach((task, index) => {
                     const li = document.createElement('li');
-                    li.className = 'task-item';
+                    li.className = `task-item ${task.completed ? 'completed' : ''}`;
 
                     const taskTitle = document.createElement('span');
                     taskTitle.textContent = task.title;
-                    if (task.completed) {
-                        taskTitle.style.textDecoration = 'line-through';
-                    }
+
+                    const editButton = document.createElement('button');
+                    editButton.textContent = 'Edit';
+                    editButton.className = 'edit-button';
 
                     const completeButton = document.createElement('button');
                     completeButton.textContent = task.completed ? 'Uncomplete' : 'Complete';
@@ -172,57 +268,132 @@
                     deleteButton.className = 'delete-button';
 
                     li.appendChild(taskTitle);
+                    li.appendChild(editButton);
                     li.appendChild(completeButton);
                     li.appendChild(deleteButton);
                     this.taskList.appendChild(li);
+
+                    editButton.addEventListener('click', () => {
+                        const newTitle = prompt('Edit task', task.title);
+                        if (newTitle !== null && newTitle.trim() !== '') {
+                            this.onEditButtonClick(index, newTitle);
+                        }
+                    });
+
+                    completeButton.addEventListener('click', () => {
+                        this.onCompleteButtonClick(index);
+                    });
+
+                    deleteButton.addEventListener('click', () => {
+                        this.showModal(index);
+                    });
                 });
             }
 
             clearInput() {
                 this.taskInput.value = '';
             }
+
+            setFilterButtonActive(button) {
+                this.filterButtons.forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+            }
+
+            showModal(index) {
+                this.modal.style.display = 'flex';
+                this.onConfirmDeleteButtonClick(index);
+            }
+
+            hideModal() {
+                this.modal.style.display = 'none';
+            }
+
+            setOnAddTaskButtonClick(handler) {
+                this.addTaskButton.addEventListener('click', handler);
+            }
+
+            setOnCompleteButtonClick(handler) {
+                this.onCompleteButtonClick = handler;
+            }
+
+            setOnDeleteButtonClick(handler) {
+                this.onDeleteButtonClick = handler;
+            }
+
+            setOnEditButtonClick(handler) {
+                this.onEditButtonClick = handler;
+            }
+
+            setOnFilterButtonClick(handler) {
+                this.filterButtons.forEach(button => {
+                    button.addEventListener('click', () => {
+                        this.setFilterButtonActive(button);
+                        handler(button.dataset.filter);
+                    });
+                });
+            }
+
+            onConfirmDeleteButtonClick(index) {
+                this.confirmDeleteButton.onclick = () => {
+                    this.onDeleteButtonClick(index);
+                    this.hideModal();
+                };
+
+                this.cancelDeleteButton.onclick = () => {
+                    this.hideModal();
+                };
+            }
         }
 
-        // Контроллер
         class Controller {
             constructor(model, view) {
                 this.model = model;
                 this.view = view;
 
-                this.view.addTaskButton.addEventListener('click', () => this.addTask());
-                this.view.taskList.addEventListener('click', (event) => this.handleTaskActions(event));
+                this.view.setOnAddTaskButtonClick(this.handleAddTask.bind(this));
+                this.view.setOnCompleteButtonClick(this.handleCompleteTask.bind(this));
+                this.view.setOnDeleteButtonClick(this.handleDeleteTask.bind(this));
+                this.view.setOnEditButtonClick(this.handleEditTask.bind(this));
+                this.view.setOnFilterButtonClick(this.handleFilterTasks.bind(this));
 
-                this.view.displayTasks(this.model.getTasks());
+                this.displayTasks();
             }
 
-            addTask() {
+            handleAddTask() {
                 const taskTitle = this.view.taskInput.value.trim();
                 if (taskTitle) {
                     const task = new Task(taskTitle);
                     this.model.addTask(task);
+                    this.displayTasks();
                     this.view.clearInput();
-                    this.view.displayTasks(this.model.getTasks());
                 }
             }
 
-            handleTaskActions(event) {
-                const index = Array.from(this.view.taskList.children).indexOf(event.target.parentElement);
+            handleCompleteTask(index) {
+                this.model.toggleTaskCompletion(index);
+                this.displayTasks();
+            }
 
-                if (event.target.className === 'complete-button') {
-                    const task = this.model.getTasks()[index];
-                    task.completed = !task.completed;
-                    this.model.updateTask(index, task);
-                    this.view.displayTasks(this.model.getTasks());
-                }
+            handleDeleteTask(index) {
+                this.model.deleteTask(index);
+                this.displayTasks();
+            }
 
-                if (event.target.className === 'delete-button') {
-                    this.model.deleteTask(index);
-                    this.view.displayTasks(this.model.getTasks());
-                }
+            handleEditTask(index, newTitle) {
+                this.model.editTask(index, newTitle);
+                this.displayTasks();
+            }
+
+            handleFilterTasks(filter) {
+                this.displayTasks(filter);
+            }
+
+            displayTasks(filter = 'all') {
+                const tasks = this.model.getTasks(filter);
+                this.view.displayTasks(tasks);
             }
         }
 
-        // Запуск приложения
         document.addEventListener('DOMContentLoaded', () => {
             const model = new Model();
             const view = new View();
